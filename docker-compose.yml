@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: caredock_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: caredock
+      POSTGRES_PASSWORD: caredock
+      POSTGRES_DB: caredock_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - caredock_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: caredock_backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://caredock:caredock@db:5432/caredock_db
+      JWT_SECRET_KEY: change_this_secret_key_in_production
+      ESP32_SHARED_SECRET: change_this_device_secret
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: gemma3
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: caredock_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  caredock_pgdata:
