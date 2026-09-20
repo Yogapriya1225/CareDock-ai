@@ -23,7 +23,8 @@ from app.models.profiles import Patient
 from app.models.medicine import MedicineHistory, MedicineSchedule
 from app.models.monitoring import ActivityLog, Alert
 from app.schemas.device import ESP32Payload, ESP32Response
-from app.ml.risk_engine import detect_anomaly
+from app.ml.risk_engine import evaluate
+from app.services.alert_service import alert_service
 
 router = APIRouter(prefix="/api/esp32", tags=["ESP32 Device"])
 
@@ -127,27 +128,30 @@ def ingest_reading(payload: ESP32Payload, db: Session = Depends(get_db)):
                     response.buzzer = True
 
     # --- Anomaly detection (Isolation Forest / fallback heuristic) ---
+    # Build a lightweight feature set from live telemetry for anomaly check only.
+    # NOTE: This is NOT a full ML risk evaluation. Full risk is computed
+    # separately on-demand via /api/ml/{patient_id}/predict-risk.
     missed_7d = (
         db.query(MedicineHistory)
         .filter(MedicineHistory.patient_id == patient.id, MedicineHistory.missed == True)  # noqa: E712
         .count()
     )
-    anomaly_features = {
+    telemetry_features = {
         "medicine_adherence_percent": 100.0,
-        "activity_score": 0.0 if payload.pir_motion else 20.0,
+        "activity_score": 100.0 if payload.pir_motion else 20.0,
         "missed_medicine_count_7d": missed_7d,
         "inactivity_minutes_avg": 0.0 if payload.pir_motion else 60.0,
         "recovery_history_score": 70.0,
     }
-    anomaly = detect_anomaly(anomaly_features)
-    if anomaly["is_anomaly"]:
-        db.add(
-            Alert(
-                patient_id=patient.id,
-                alert_type="anomaly",
-                message="Unusual inactivity or repeated missed doses detected.",
-                severity="high",
-            )
+    ml_result = evaluate(telemetry_features)
+    if ml_result["is_anomaly"]:
+        # Use deduplicating alert_service so we don't spam anomaly alerts
+        alert_service.create_alert(
+            db=db,
+            patient_id=patient.id,
+            alert_type="anomaly",
+            message="Unusual inactivity or repeated missed doses detected by sensor.",
+            severity="high",
         )
         response.alert_triggered = True
         if response.led_color != "red":

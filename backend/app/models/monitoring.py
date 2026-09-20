@@ -26,8 +26,12 @@ class RecoveryScore(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    score = Column(Float, nullable=False)  # 0-100
+    prototype_recovery_score = Column(Float, nullable=False)  # 0-100
     risk_level = Column(String(20), nullable=False)  # low | medium | high
+    risk_probability = Column(Float, nullable=True) # 0.0 - 1.0
+    is_anomaly = Column(Boolean, default=False)
+    recommendation = Column(Text, nullable=True)
+    model_version = Column(String(50), nullable=True)
     computed_at = Column(DateTime, default=datetime.utcnow)
 
     patient = relationship("Patient", back_populates="recovery_scores")

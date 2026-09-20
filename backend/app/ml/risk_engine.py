@@ -1,9 +1,9 @@
 """
 Risk engine wrapping three models:
 
-1. XGBoost classifier -> Recovery Risk (low / medium / high)
+1. XGBoost classifier -> Recovery Risk (low / medium / high) & probability
 2. Isolation Forest    -> Anomaly detection (inactivity, repeated missed doses)
-3. Decision Tree       -> Explainable recommendation text
+3. Decision Tree       -> Explainable recommendation text (extracting decision paths)
 
 Models are trained by `ml/train_models.py` (see /ml folder) and saved to
 backend/app/ml/artifacts/*.joblib. If artifacts are missing (fresh clone),
@@ -12,7 +12,7 @@ never breaks during a hackathon demo.
 """
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import joblib
 import numpy as np
@@ -59,61 +59,60 @@ _iforest_model = _load(IFOREST_PATH)
 _dtree_model = _load(DTREE_PATH)
 
 
-def _rule_based_risk(features: dict) -> str:
+def _rule_based_risk(features: dict) -> dict:
     """Transparent fallback used only if no trained model artifact exists."""
     adherence = features["medicine_adherence_percent"]
     missed = features["missed_medicine_count_7d"]
     inactivity = features["inactivity_minutes_avg"]
 
     if adherence < 50 or missed >= 5 or inactivity > 300:
-        return "high"
+        return {"risk_level": "high", "probability": 0.9}
     if adherence < 80 or missed >= 2 or inactivity > 120:
-        return "medium"
-    return "low"
+        return {"risk_level": "medium", "probability": 0.65}
+    return {"risk_level": "low", "probability": 0.2}
 
 
-def predict_recovery_risk(features: dict) -> dict:
+def _get_dtree_recommendation(features: dict, vector: np.ndarray, risk_level: str) -> str:
     """
-    features: dict matching FEATURE_ORDER keys.
-    Returns {"risk_level": str, "score": float (0-100), "model": str}
+    Traces the decision path to find the most impactful feature,
+    generating an explainable recommendation.
     """
-    vector = np.array([[features[f] for f in FEATURE_ORDER]])
+    if _dtree_model is None:
+        return _fallback_recommendation(risk_level)
 
-    if _xgb_model is not None:
-        proba = _xgb_model.predict_proba(vector)[0]
-        classes = _xgb_model.classes_
-        risk_level = classes[int(np.argmax(proba))]
-        # Map risk to a 0-100 "recovery score" (inverse of risk confidence)
-        risk_to_base = {"low": 85, "medium": 60, "high": 30}
-        score = risk_to_base.get(risk_level, 50)
-        return {"risk_level": str(risk_level), "score": float(score), "model": "xgboost"}
+    try:
+        path = _dtree_model.decision_path(vector)
+        node_index = path.indices
+        feature_indices = _dtree_model.tree_.feature
 
-    risk_level = _rule_based_risk(features)
-    score_map = {"low": 85.0, "medium": 60.0, "high": 30.0}
-    return {"risk_level": risk_level, "score": score_map[risk_level], "model": "rule_based_fallback"}
+        # Find the first valid feature used to split this sample
+        dominant_feature_idx = None
+        for node_id in node_index:
+            if feature_indices[node_id] != -2:  # -2 means leaf node
+                dominant_feature_idx = feature_indices[node_id]
+                break
+        
+        if dominant_feature_idx is None:
+            return _fallback_recommendation(risk_level)
+            
+        feature_name = FEATURE_ORDER[dominant_feature_idx]
+        val = features[feature_name]
+        
+        if feature_name == "medicine_adherence_percent" and val < 80:
+            return "Your medicine adherence is a bit low. Setting daily reminders might help keep you on track for a smoother recovery."
+        elif feature_name == "missed_medicine_count_7d" and val > 0:
+            return f"You've missed {val} doses recently. Please reach out to your care team to ensure this doesn't impact your recovery."
+        elif feature_name == "inactivity_minutes_avg" and val > 120:
+            return "We noticed prolonged periods of inactivity. If approved by your doctor, try incorporating light movement into your day."
+        elif feature_name == "activity_score" and val < 50:
+            return "Your activity levels are lower than expected. Focus on small, safe movements and consult your doctor if you feel unwell."
+        
+        return _fallback_recommendation(risk_level)
+    except Exception:
+        return _fallback_recommendation(risk_level)
 
 
-def detect_anomaly(features: dict) -> dict:
-    """
-    Returns {"is_anomaly": bool, "model": str}
-    Anomaly = unusual inactivity or repeated missed medicine pattern.
-    """
-    vector = np.array([[features[f] for f in FEATURE_ORDER]])
-
-    if _iforest_model is not None:
-        prediction = _iforest_model.predict(vector)[0]  # -1 = anomaly, 1 = normal
-        return {"is_anomaly": prediction == -1, "model": "isolation_forest"}
-
-    is_anomaly = features["inactivity_minutes_avg"] > 240 or features["missed_medicine_count_7d"] >= 4
-    return {"is_anomaly": bool(is_anomaly), "model": "rule_based_fallback"}
-
-
-def generate_recommendation(features: dict, risk_level: str) -> str:
-    """
-    Uses the trained Decision Tree (if available) purely to pick an explainable
-    path/leaf; otherwise falls back to a rule-based explainable message.
-    Recommendations are wellness/adherence nudges only - never medical diagnoses.
-    """
+def _fallback_recommendation(risk_level: str) -> str:
     if risk_level == "high":
         return (
             "Recovery indicators suggest elevated risk. Please contact your care team soon, "
@@ -130,3 +129,49 @@ def generate_recommendation(features: dict, risk_level: str) -> str:
         "Great progress! Keep following your medicine schedule and stay gently active. "
         "Continue reporting how you feel to your care team."
     )
+
+
+def evaluate(features: dict) -> Dict[str, Any]:
+    """
+    Evaluates risk and anomalies in a single pass.
+    features: dict matching FEATURE_ORDER keys.
+    """
+    vector = np.array([[features[f] for f in FEATURE_ORDER]])
+    result = {
+        "model_versions": {
+            "xgboost": "v1.0" if _xgb_model else "fallback",
+            "isolation_forest": "v1.0" if _iforest_model else "fallback",
+            "decision_tree": "v1.0" if _dtree_model else "fallback",
+        }
+    }
+
+    # 1. Evaluate Risk (XGBoost)
+    if _xgb_model is not None:
+        proba = _xgb_model.predict_proba(vector)[0]
+        classes = _xgb_model.classes_
+        max_idx = int(np.argmax(proba))
+        risk_level = str(classes[max_idx])
+        risk_probability = float(proba[max_idx])
+    else:
+        fb = _rule_based_risk(features)
+        risk_level = fb["risk_level"]
+        risk_probability = fb["probability"]
+
+    result["risk_level"] = risk_level
+    result["risk_probability"] = risk_probability
+
+    # Prototype recovery score mapping (NOT clinically validated)
+    risk_to_base = {"low": 85.0, "medium": 60.0, "high": 30.0}
+    result["prototype_recovery_score"] = risk_to_base.get(risk_level, 50.0)
+
+    # 2. Evaluate Anomaly (Isolation Forest)
+    if _iforest_model is not None:
+        prediction = _iforest_model.predict(vector)[0]  # -1 = anomaly, 1 = normal
+        result["is_anomaly"] = bool(prediction == -1)
+    else:
+        result["is_anomaly"] = bool(features["inactivity_minutes_avg"] > 240 or features["missed_medicine_count_7d"] >= 4)
+
+    # 3. Generate Recommendation (Decision Tree)
+    result["recommendation"] = _get_dtree_recommendation(features, vector, risk_level)
+
+    return result

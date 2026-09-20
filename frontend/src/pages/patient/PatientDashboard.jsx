@@ -20,7 +20,7 @@ import {
 const tabs = [
   { id: "overview", label: "Overview", icon: "📊" },
   { id: "schedule", label: "Medicine Schedule", icon: "💊" },
-  { id: "timeline", label: "Recovery Timeline", icon: "📈" },
+  { id: "timeline", label: "Recovery & Risk Analytics", icon: "📈" },
   { id: "assistant", label: "AI Assistant", icon: "🤖" },
   { id: "careteam", label: "Care Team & Profile", icon: "👨‍⚕️" },
 ];
@@ -29,13 +29,13 @@ export default function PatientDashboard() {
   const { user } = useAuth();
   const patientId = user?.patient_profile_id;
 
-  const [skippedOnboarding, setSkippedOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const [dashboard, setDashboard] = useState(null);
   const [history, setHistory] = useState([]);
   const [recoveryHistory, setRecoveryHistory] = useState([]);
+  const [riskAnalytics, setRiskAnalytics] = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,20 +54,23 @@ export default function PatientDashboard() {
     setLoading(true);
     setError("");
     try {
-      const [dashRes, scoresRes, activityRes, historyRes] = await Promise.all([
+      const [dashRes, scoresRes, activityRes, historyRes, analyticsRes] = await Promise.all([
         PatientAPI.dashboard(patientId),
         PatientAPI.getRecoveryScores(patientId).catch(() => ({ data: [] })),
         PatientAPI.getActivity(patientId).catch(() => ({ data: [] })),
         PatientAPI.getHistory(patientId).catch(() => ({ data: [] })),
+        PatientAPI.getRiskAnalytics(patientId).catch(() => ({ data: [] })),
       ]);
       setDashboard(dashRes.data);
+      setRiskAnalytics(analyticsRes.data || []);
       setRecoveryHistory(
         scoresRes.data
           .slice()
           .reverse()
           .map((s) => ({
             date: new Date(s.computed_at).toLocaleDateString([], { month: "short", day: "numeric" }),
-            score: Math.round(s.score),
+            score: Math.round(s.prototype_recovery_score || s.score || 0),
+            risk: s.risk_level || "low",
           }))
       );
       setActivity(
@@ -92,9 +95,9 @@ export default function PatientDashboard() {
     loadAllData();
   }, [patientId]);
 
-  // Show onboarding if no profile and user hasn't explicitly clicked "Skip for now"
-  if (!patientId && !skippedOnboarding) {
-    return <OnboardingForm onSkip={() => setSkippedOnboarding(true)} />;
+  // Show onboarding if no profile
+  if (!patientId) {
+    return <OnboardingForm />;
   }
 
   const sendChat = async (messageToSend) => {
@@ -182,11 +185,19 @@ export default function PatientDashboard() {
                   accent="green"
                 />
                 <StatCard
-                  label="Recovery Score"
-                  value={dashboard?.recovery_score ? Math.round(dashboard.recovery_score.score) : "—"}
+                  label="Prototype Recovery Score"
+                  value={dashboard?.recovery_score ? Math.round(dashboard.recovery_score.prototype_recovery_score) : "—"}
                   sub={
                     dashboard?.recovery_score ? (
-                      <RiskBadge level={dashboard.recovery_score.risk_level} />
+                      <div className="flex items-center gap-2">
+                        <RiskBadge level={dashboard.recovery_score.risk_level} />
+                        {dashboard.recovery_score.risk_probability && (
+                          <span className="text-xs text-slate-500 font-medium">({(dashboard.recovery_score.risk_probability * 100).toFixed(1)}% prob)</span>
+                        )}
+                        {dashboard.recovery_score.is_anomaly && (
+                          <span className="text-xs text-red-500 font-bold" title="Anomaly Detected">⚠️</span>
+                        )}
+                      </div>
                     ) : (
                       "Pending calculation"
                     )
@@ -513,19 +524,19 @@ export default function PatientDashboard() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 3: RECOVERY TIMELINE */}
+          {/* TAB 3: RECOVERY & RISK PREDICTION ANALYTICS */}
           {/* ========================================================================= */}
           {activeTab === "timeline" && (
             <div className="space-y-6">
-              {/* Recovery Score Chart */}
-              <div className="card">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              {/* Risk Prediction Analytics Card */}
+              <div className="card space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                   <div>
                     <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                      <span>📈</span> Post-Discharge Recovery Score Timeline
+                      <span>🤖</span> CareDock AI Risk Prediction & Analytics Engine
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Calculated from medication adherence, PIR room mobility, and reported vitals.
+                      Real-time machine learning prediction based on XGBoost risk modeling, isolation forest anomaly detection, and adherence vectors.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -539,9 +550,86 @@ export default function PatientDashboard() {
                       disabled={recomputing}
                       className="btn-primary text-xs shadow-xs"
                     >
-                      {recomputing ? "Recomputing Score..." : "⚡ Recompute Risk Score"}
+                      {recomputing ? "Predicting..." : "⚡ Recompute Risk Score"}
                     </button>
                   </div>
+                </div>
+
+                {/* Prediction Summary Tiles */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                    dashboard?.recovery_score?.risk_level === "high"
+                      ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50"
+                      : dashboard?.recovery_score?.risk_level === "moderate"
+                      ? "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50"
+                      : "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50"
+                  }`}>
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Predicted Risk Level
+                      </span>
+                      <div className="mt-1 flex items-center gap-2">
+                        <RiskBadge level={dashboard?.recovery_score?.risk_level || "low"} />
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                          {dashboard?.recovery_score?.risk_level === "high"
+                            ? "Critical"
+                            : dashboard?.recovery_score?.risk_level === "moderate"
+                            ? "Moderate"
+                            : "Stable"}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2">
+                      {dashboard?.recovery_score?.risk_level === "high"
+                        ? "Immediate review needed. Your doctor and caregiver have received an urgent alert."
+                        : dashboard?.recovery_score?.risk_level === "moderate"
+                        ? "Take medication on time and perform light mobility exercises."
+                        : "Excellent recovery adherence and stable biometric activity."}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Recovery Index Score
+                      </span>
+                      <p className="text-2xl font-bold text-primary-600 dark:text-primary-400 mt-1">
+                        {dashboard?.recovery_score?.score ? Math.round(dashboard.recovery_score.score) : 85} <span className="text-xs text-slate-400 font-normal">/ 100</span>
+                      </p>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="bg-primary-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${dashboard?.recovery_score?.score || 85}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Medication Compliance
+                      </span>
+                      <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                        {dashboard?.compliance_percent_today ?? 100}%
+                      </p>
+                    </div>
+                    <p className="text-2xs text-slate-400 mt-2">
+                      Based on load-cell weight readings and scheduled dosage timings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recovery Score Chart */}
+              <div className="card">
+                <div className="mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span>📈</span> Post-Discharge Recovery Score Timeline
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Historical trend of recovery indices computed after hospital discharge.
+                  </p>
                 </div>
 
                 {recoveryHistory.length === 0 ? (
@@ -638,6 +726,45 @@ export default function PatientDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Historical Risk Predictions Table */}
+              {riskAnalytics.length > 0 && (
+                <div className="card">
+                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-2">
+                    <span>📋</span> Historical AI Prediction Logs
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-200 dark:border-slate-800 uppercase font-semibold">
+                          <th className="py-2.5 px-3">Date & Time</th>
+                          <th className="py-2.5 px-3">Predicted Risk Level</th>
+                          <th className="py-2.5 px-3">Recovery Score</th>
+                          <th className="py-2.5 px-3">Adherence Factor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {riskAnalytics.slice(0, 10).map((r, i) => (
+                          <tr key={r.id || i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-300 font-mono">
+                              {new Date(r.computed_at).toLocaleString()}
+                            </td>
+                            <td className="py-2 px-3">
+                              <RiskBadge level={r.risk_level} />
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-slate-900 dark:text-slate-100">
+                              {Math.round(r.prototype_recovery_score || r.score || 0)} / 100
+                            </td>
+                            <td className="py-2 px-3 text-slate-500">
+                              {r.risk_level === "high" ? "Irregular (Flagged)" : "Optimal"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

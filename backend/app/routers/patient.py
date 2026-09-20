@@ -219,3 +219,21 @@ def get_patient_dashboard(patient_id: int, db: Session = Depends(get_db), curren
         if next_appointment
         else None,
     }
+
+
+@router.get("/{patient_id}/risk-analytics", response_model=list[RecoveryScoreOut])
+def get_risk_analytics(
+    patient_id: int,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return historical recovery scores (risk analytics) for the patient."""
+    _ = _get_patient_or_404(db, patient_id)
+    return (
+        db.query(RecoveryScore)
+        .filter(RecoveryScore.patient_id == patient_id)
+        .order_by(RecoveryScore.computed_at.desc())
+        .limit(limit)
+        .all()
+    )

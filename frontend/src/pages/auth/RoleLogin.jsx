@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
-export default function LoginPage() {
+const roleTitles = {
+  patient: "Patient Portal",
+  doctor: "Doctor Portal",
+  caregiver: "Caregiver Portal",
+  admin: "Admin Console",
+};
+
+export default function RoleLogin({ targetRole }) {
   const { register, handleSubmit, formState: { errors } } = useForm();
   const { login } = useAuth();
   const { isDark, toggle } = useTheme();
@@ -17,6 +24,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const user = await login(data.email, data.password);
+      if (user.role !== targetRole) {
+        setServerError(`This account is registered as a ${user.role}, not a ${targetRole}. Please use the correct portal.`);
+        return;
+      }
       navigate(`/${user.role}/dashboard`);
     } catch (err) {
       setServerError(err.response?.data?.detail || "Login failed. Please check your credentials.");
@@ -27,7 +38,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-6 relative transition-colors duration-200">
-      {/* Theme Toggle Button */}
       <button
         type="button"
         onClick={toggle}
@@ -47,16 +57,16 @@ export default function LoginPage() {
               CareDock AI
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Smart Post-Discharge Monitoring
+              {roleTitles[targetRole]}
             </p>
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100">
-          Welcome back
+        <h1 className="text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100 capitalize">
+          {targetRole} Login
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-          Log in to access your post-discharge monitoring dashboard
+          Log in to access your {targetRole} dashboard
         </p>
 
         {serverError && (
@@ -105,9 +115,12 @@ export default function LoginPage() {
 
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-6 text-center">
           Don't have an account?{" "}
-          <Link to="/register" className="text-primary-600 dark:text-primary-400 font-semibold hover:underline">
+          <Link to={`/${targetRole}/register`} className="text-primary-600 dark:text-primary-400 font-semibold hover:underline">
             Sign up
           </Link>
+        </p>
+        <p className="text-xs text-slate-400 mt-4 text-center">
+          <Link to="/" className="hover:underline">← Back to Home</Link>
         </p>
       </div>
     </div>

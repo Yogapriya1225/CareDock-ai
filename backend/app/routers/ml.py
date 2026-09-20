@@ -1,61 +1,73 @@
 """
 ML endpoints: compute/refresh a patient's recovery risk + recommendation.
 """
-from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.profiles import Patient
-from app.models.medicine import MedicineHistory
-from app.models.monitoring import ActivityLog, RecoveryScore, Recommendation
-from app.ml.risk_engine import predict_recovery_risk, generate_recommendation
+from app.models.monitoring import RecoveryScore, Recommendation
+from app.ml.risk_engine import evaluate
+from app.services.feature_service import feature_service
+from app.services.alert_service import alert_service
 
 router = APIRouter(prefix="/api/ml", tags=["Machine Learning"])
 
 
-@router.post("/{patient_id}/recompute-risk")
-def recompute_risk(patient_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@router.post("/{patient_id}/predict-risk")
+def predict_risk(patient_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Computes features, evaluates ML models, and persists the result.
+    """
+    # Simple authorization check (doctors/caregivers can view their assigned patients)
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
+        
+    # Build features
+    features = feature_service.build_features(db, patient_id)
+    
+    # Evaluate risk
+    result = evaluate(features)
+    
+    # Persist the score
+    score_row = RecoveryScore(
+        patient_id=patient_id, 
+        prototype_recovery_score=result["prototype_recovery_score"], 
+        risk_level=result["risk_level"],
+        risk_probability=result["risk_probability"],
+        is_anomaly=result["is_anomaly"],
+        recommendation=result["recommendation"],
+        model_version=result["model_versions"]["xgboost"]
+    )
+    
+    # Check for anomaly and create alert if needed
+    if result["is_anomaly"]:
+        alert_service.create_alert(
+            db=db, 
+            patient_id=patient_id, 
+            alert_type="anomaly", 
+            message="Unusual telemetry pattern detected by Isolation Forest.", 
+            severity="high"
+        )
+        
+    # If high risk, optionally create an alert too
+    if result["risk_level"] == "high":
+        alert_service.create_alert(
+            db=db, 
+            patient_id=patient_id, 
+            alert_type="high_risk", 
+            message="Patient classified as high recovery risk.", 
+            severity="critical"
+        )
 
-    week_ago = datetime.utcnow() - timedelta(days=7)
-
-    total_doses = db.query(func.count(MedicineHistory.id)).filter(
-        MedicineHistory.patient_id == patient_id, MedicineHistory.recorded_at >= week_ago
-    ).scalar() or 1
-    taken_doses = db.query(func.count(MedicineHistory.id)).filter(
-        MedicineHistory.patient_id == patient_id,
-        MedicineHistory.taken == True,  # noqa: E712
-        MedicineHistory.recorded_at >= week_ago,
-    ).scalar()
-    missed_doses = db.query(func.count(MedicineHistory.id)).filter(
-        MedicineHistory.patient_id == patient_id,
-        MedicineHistory.missed == True,  # noqa: E712
-        MedicineHistory.recorded_at >= week_ago,
-    ).scalar()
-
-    avg_inactivity = db.query(func.avg(ActivityLog.inactivity_minutes)).filter(
-        ActivityLog.patient_id == patient_id, ActivityLog.recorded_at >= week_ago
-    ).scalar() or 0.0
-
-    features = {
-        "medicine_adherence_percent": round((taken_doses / total_doses) * 100, 1),
-        "activity_score": max(0.0, 100.0 - float(avg_inactivity)),
-        "missed_medicine_count_7d": missed_doses,
-        "inactivity_minutes_avg": float(avg_inactivity),
-        "recovery_history_score": 70.0,  # placeholder until longitudinal history model is trained
-    }
-
-    risk_result = predict_recovery_risk(features)
-    recommendation_text = generate_recommendation(features, risk_result["risk_level"])
-
-    score_row = RecoveryScore(patient_id=patient_id, score=risk_result["score"], risk_level=risk_result["risk_level"])
-    rec_row = Recommendation(patient_id=patient_id, text=recommendation_text, source="decision_tree")
+    # Note: We persist the recommendation inside RecoveryScore as well, 
+    # but we can also add to Recommendation table if the schema prefers it.
+    rec_row = Recommendation(patient_id=patient_id, text=result["recommendation"], source="decision_tree")
+    
     db.add(score_row)
     db.add(rec_row)
     db.commit()
@@ -63,8 +75,33 @@ def recompute_risk(patient_id: int, db: Session = Depends(get_db), current_user:
 
     return {
         "features_used": features,
-        "risk_level": risk_result["risk_level"],
-        "score": risk_result["score"],
-        "model": risk_result["model"],
-        "recommendation": recommendation_text,
+        "risk_level": result["risk_level"],
+        "risk_probability": result["risk_probability"],
+        "prototype_recovery_score": result["prototype_recovery_score"],
+        "is_anomaly": result["is_anomaly"],
+        "recommendation": result["recommendation"],
+        "model_versions": result["model_versions"],
+        "computed_at": score_row.computed_at
     }
+
+
+@router.get("/{patient_id}/history")
+def get_risk_history(patient_id: int, limit: int = 10, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Fetches the historical recovery risk evaluations.
+    """
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    scores = db.query(RecoveryScore).filter(
+        RecoveryScore.patient_id == patient_id
+    ).order_by(RecoveryScore.computed_at.desc()).limit(limit).all()
+    
+    return scores
+
+# Keep the old recompute-risk for backward compatibility (if frontend hasn't migrated yet)
+@router.post("/{patient_id}/recompute-risk")
+def recompute_risk(patient_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Legacy route pointing to predict_risk"""
+    return predict_risk(patient_id, db, current_user)

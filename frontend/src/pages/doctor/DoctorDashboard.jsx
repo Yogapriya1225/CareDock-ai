@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import DashboardLayout from "../../components/DashboardLayout";
 import OnboardingForm from "../../components/OnboardingForm";
 import EditProfileModal from "../../components/EditProfileModal";
@@ -27,9 +28,9 @@ const tabs = [
 
 export default function DoctorDashboard() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const doctorId = user?.doctor_profile_id;
 
-  const [skippedOnboarding, setSkippedOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState("patients");
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
@@ -57,13 +58,24 @@ export default function DoctorDashboard() {
         DoctorAPI.listPatients(searchTerm),
         DoctorAPI.liveAlerts().catch(() => ({ data: [] })),
       ]);
-      setPatients(patientsRes.data || []);
+      const fetchedPatients = patientsRes.data || [];
+      setPatients(fetchedPatients);
       setAlerts(alertsRes.data || []);
 
+      const highRisk = fetchedPatients.filter((p) => p.risk_level === "high");
+      if (highRisk.length > 0) {
+        addToast({
+          title: "Critical: High-Risk Patients Detected",
+          message: `${highRisk.length} patient(s) have been flagged with High Risk. Review immediately.`,
+          type: "urgent",
+          duration: 7000,
+        });
+      }
+
       // If a patient is selected, refresh their monitor data, else select the first patient
-      if (patientsRes.data && patientsRes.data.length > 0) {
+      if (fetchedPatients.length > 0) {
         if (!selectedPatientId) {
-          setSelectedPatientId(patientsRes.data[0].patient_id);
+          setSelectedPatientId(fetchedPatients[0].patient_id);
         }
       }
     } catch (err) {
@@ -115,8 +127,8 @@ export default function DoctorDashboard() {
     };
   }, [selectedPatientId]);
 
-  if (!doctorId && !skippedOnboarding) {
-    return <OnboardingForm onSkip={() => setSkippedOnboarding(true)} />;
+  if (!doctorId) {
+    return <OnboardingForm />;
   }
 
   const handleInspectPatient = (pId) => {
@@ -149,6 +161,24 @@ export default function DoctorDashboard() {
     >
       {loading && <LoadingState label="Loading patient panel..." />}
       {error && <ErrorState message={error} />}
+
+      {highRiskPatientsList.length > 0 && (
+        <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🚨</span>
+            <div>
+              <h3 className="font-bold text-red-800 dark:text-red-200 text-sm">Critical Attention Required</h3>
+              <p className="text-red-600 dark:text-red-300 text-xs">You have {highRiskPatientsList.length} patient(s) flagged as High Risk. Please check the High-Risk Patients tab.</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab("highrisk")}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+          >
+            View High-Risk →
+          </button>
+        </div>
+      )}
 
       {!loading && !error && (
         <div className="space-y-6">

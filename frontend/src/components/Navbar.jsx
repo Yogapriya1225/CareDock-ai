@@ -39,10 +39,18 @@ export default function Navbar() {
             </>
           ) : (
             <>
-              <button className="btn-secondary text-sm" onClick={() => navigate("/login")}>
+              <button className="btn-secondary text-sm" onClick={() => {
+                const rolesEl = document.getElementById("roles");
+                if (rolesEl) { rolesEl.scrollIntoView({ behavior: "smooth" }); }
+                else { navigate("/#roles"); }
+              }}>
                 Login
               </button>
-              <button className="btn-primary text-sm" onClick={() => navigate("/register")}>
+              <button className="btn-primary text-sm" onClick={() => {
+                const rolesEl = document.getElementById("roles");
+                if (rolesEl) { rolesEl.scrollIntoView({ behavior: "smooth" }); }
+                else { navigate("/#roles"); }
+              }}>
                 Get Started
               </button>
             </>

@@ -5,9 +5,15 @@ export function StatCard({ label, value, sub, accent = "primary" }) {
     amber: "text-amber-600",
     red: "text-red-600",
   };
+  const bgClasses = {
+    primary: "bg-blue-50 dark:bg-slate-900",
+    green: "bg-emerald-50 dark:bg-slate-900",
+    amber: "bg-amber-50 dark:bg-slate-900",
+    red: "bg-red-50 dark:bg-slate-900",
+  };
   return (
-    <div className="card">
-      <p className="text-sm text-slate-500">{label}</p>
+    <div className={`rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-5 ${bgClasses[accent] || bgClasses.primary}`}>
+      <p className="text-sm text-slate-500 font-medium">{label}</p>
       <p className={`text-3xl font-bold mt-1 ${accentClasses[accent] || accentClasses.primary}`}>{value}</p>
       {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
     </div>

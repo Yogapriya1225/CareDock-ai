@@ -119,7 +119,9 @@ def list_patients(
                 "name": p.user.full_name if p.user else f"Patient #{p.id}",
                 "diagnosis": p.diagnosis or "Not specified",
                 "risk_level": latest_score.risk_level if latest_score else "unknown",
-                "recovery_score": latest_score.score if latest_score else None,
+                "recovery_score": latest_score.prototype_recovery_score if latest_score else None,
+                "risk_probability": latest_score.risk_probability if latest_score else None,
+                "is_anomaly": latest_score.is_anomaly if latest_score else False,
                 "emergency_contact_name": p.emergency_contact_name,
                 "emergency_contact_phone": p.emergency_contact_phone,
                 "device_id": p.device_id,
@@ -135,12 +137,12 @@ def list_patients(
 @router.get("/high-risk-patients")
 def high_risk_patients(db: Session = Depends(get_db), current_user: User = Depends(require_roles(UserRole.DOCTOR, UserRole.ADMIN))):
     subq = (
-        db.query(RecoveryScore.patient_id, RecoveryScore.risk_level, RecoveryScore.score)
+        db.query(RecoveryScore.patient_id, RecoveryScore.risk_level, RecoveryScore.prototype_recovery_score)
         .filter(RecoveryScore.risk_level == "high")
         .order_by(RecoveryScore.computed_at.desc())
         .all()
     )
-    return [{"patient_id": r.patient_id, "risk_level": r.risk_level, "score": r.score} for r in subq]
+    return [{"patient_id": r.patient_id, "risk_level": r.risk_level, "score": r.prototype_recovery_score} for r in subq]
 
 
 @router.get("/alerts/live")

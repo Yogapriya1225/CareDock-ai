@@ -19,6 +19,7 @@ export const PatientAPI = {
   getActivity: (patientId) => api.get(`/api/patient/${patientId}/activity`),
   getRecoveryScores: (patientId) => api.get(`/api/patient/${patientId}/recovery-scores`),
   getAlerts: (patientId) => api.get(`/api/patient/${patientId}/alerts`),
+  getRiskAnalytics: (patientId, limit = 30) => api.get(`/api/patient/${patientId}/risk-analytics?limit=${limit}`),
   get: (patientId) => api.get(`/api/patient/${patientId}`),
 };
 
@@ -45,12 +46,25 @@ export const CaregiverAPI = {
 
 export const AdminAPI = {
   listUsers: () => api.get("/api/admin/users"),
+  detailedUsers: () => api.get("/api/admin/users/detailed"),
+  getUserDetails: (id) => api.get(`/api/admin/users/${id}/details`),
   listHospitals: () => api.get("/api/admin/hospitals"),
+  createHospital: (data) => api.post("/api/admin/hospitals", data),
+  updateHospital: (id, data) => api.put(`/api/admin/hospitals/${id}`, data),
+  deleteHospital: (id) => api.delete(`/api/admin/hospitals/${id}`),
+  linkDoctorHospital: (data) => api.post("/api/admin/link/doctor-hospital", data),
+  linkPatientHospital: (data) => api.post("/api/admin/link/patient-hospital", data),
+  linkPatientDoctor: (data) => api.post("/api/admin/link/patient-doctor", data),
+  linkPatientCaregiver: (data) => api.post("/api/admin/link/patient-caregiver", data),
   analyticsOverview: () => api.get("/api/admin/analytics/overview"),
+  deleteUser: (id) => api.delete(`/api/admin/users/${id}`),
+  updateUser: (id, data) => api.put(`/api/admin/users/${id}`, data),
 };
 
 export const MLAPI = {
-  recomputeRisk: (patientId) => api.post(`/api/ml/${patientId}/recompute-risk`),
+  predictRisk: (patientId) => api.post(`/api/ml/${patientId}/predict-risk`),
+  getHistory: (patientId) => api.get(`/api/ml/${patientId}/history`),
+  recomputeRisk: (patientId) => api.post(`/api/ml/${patientId}/predict-risk`), // legacy fallback
 };
 
 export const ChatbotAPI = {
