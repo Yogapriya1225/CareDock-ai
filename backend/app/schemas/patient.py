@@ -93,8 +93,12 @@ class ActivityLogOut(BaseModel):
 class RecoveryScoreOut(BaseModel):
     id: int
     patient_id: int
-    score: float
+    prototype_recovery_score: float
     risk_level: str
+    risk_probability: Optional[float] = None
+    is_anomaly: Optional[bool] = None
+    recommendation: Optional[str] = None
+    model_version: Optional[str] = None
     computed_at: datetime
 
     class Config:

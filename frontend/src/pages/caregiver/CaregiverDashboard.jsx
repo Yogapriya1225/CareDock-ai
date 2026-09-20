@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import DashboardLayout from "../../components/DashboardLayout";
 import OnboardingForm from "../../components/OnboardingForm";
 import EditProfileModal from "../../components/EditProfileModal";
@@ -15,9 +16,9 @@ const tabs = [
 
 export default function CaregiverDashboard() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const caregiverId = user?.caregiver_profile_id;
 
-  const [skippedOnboarding, setSkippedOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState("status");
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
@@ -40,12 +41,23 @@ export default function CaregiverDashboard() {
         CaregiverAPI.getPatients(caregiverId),
         CaregiverAPI.allPatients().catch(() => ({ data: [] })),
       ]);
-      setPatients(patientsRes.data || []);
+      const fetchedPatients = patientsRes.data || [];
+      setPatients(fetchedPatients);
       setAllPatients(allRes.data || []);
 
+      const highRisk = fetchedPatients.filter((p) => p.risk_level === "high");
+      if (highRisk.length > 0) {
+        addToast({
+          title: "Urgent: High Risk Patient Alert",
+          message: `${highRisk.length} patient(s) under your care flagged as High Risk! Immediate attention needed.`,
+          type: "urgent",
+          duration: 7000,
+        });
+      }
+
       // If there are patients, fetch their alerts
-      if (patientsRes.data && patientsRes.data.length > 0) {
-        const alertPromises = patientsRes.data.map((p) =>
+      if (fetchedPatients.length > 0) {
+        const alertPromises = fetchedPatients.map((p) =>
           PatientAPI.getAlerts(p.patient_id).catch(() => ({ data: [] }))
         );
         const alertsResults = await Promise.all(alertPromises);
@@ -63,8 +75,8 @@ export default function CaregiverDashboard() {
     loadCaregiverData();
   }, [caregiverId]);
 
-  if (!caregiverId && !skippedOnboarding) {
-    return <OnboardingForm onSkip={() => setSkippedOnboarding(true)} />;
+  if (!caregiverId) {
+    return <OnboardingForm />;
   }
 
   const handleLinkPatient = async (patientId) => {
@@ -80,6 +92,7 @@ export default function CaregiverDashboard() {
 
   const totalMissed = patients.reduce((sum, p) => sum + (p.missed_medicine_count || 0), 0);
   const totalAlerts = patients.reduce((sum, p) => sum + (p.unresolved_alerts || 0), 0);
+  const highRiskPatients = patients.filter((p) => p.risk_level === "high");
 
   return (
     <DashboardLayout
@@ -92,6 +105,26 @@ export default function CaregiverDashboard() {
     >
       {loading && <LoadingState label="Loading linked patient status..." />}
       {error && <ErrorState message={error} />}
+
+      {highRiskPatients.length > 0 && (
+        <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-800 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🚨</span>
+            <div>
+              <h3 className="font-bold text-red-800 dark:text-red-200 text-sm">Urgent Attention Required</h3>
+              <p className="text-red-600 dark:text-red-300 text-xs">
+                {highRiskPatients.length} patient(s) under your care flagged as High Risk. Please check their medication and health telemetry.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab("status")}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-xs"
+          >
+            Review Patients →
+          </button>
+        </div>
+      )}
 
       {!loading && !error && (
         <div className="space-y-6">

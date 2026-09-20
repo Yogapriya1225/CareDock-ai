@@ -29,7 +29,7 @@ export default function LandingPage() {
             can step in before small issues become emergencies.
           </p>
           <div className="flex gap-4">
-            <button className="btn-primary" onClick={() => navigate("/register")}>
+            <button className="btn-primary" onClick={() => document.getElementById("roles")?.scrollIntoView({ behavior: "smooth" })}>
               Get Started Free
             </button>
             <button className="btn-secondary" onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>
@@ -60,8 +60,8 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      {/* Project Overview */}
-      <section className="bg-slate-50 dark:bg-slate-900/50 py-20">
+      {/* Project Overview (Roles) */}
+      <section id="roles" className="bg-slate-50 dark:bg-slate-900/50 py-20">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold mb-4">One system, three connected roles</h2>
           <p className="text-slate-600 dark:text-slate-300 max-w-2xl mx-auto mb-12">
@@ -71,15 +71,32 @@ export default function LandingPage() {
           </p>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { title: "Patients", desc: "Get reminders, track recovery, and chat with a safety-first AI assistant." },
-              { title: "Doctors", desc: "Monitor patient panels remotely, spot high-risk cases early." },
-              { title: "Caregivers", desc: "Stay looped in on medicine, activity, and emergency alerts." },
+              { title: "Patient", desc: "Get reminders, track recovery, and chat with a safety-first AI assistant.", role: "patient" },
+              { title: "Doctor", desc: "Monitor patient panels remotely, spot high-risk cases early.", role: "doctor" },
+              { title: "Caregiver", desc: "Stay looped in on medicine, activity, and emergency alerts.", role: "caregiver" },
             ].map((r) => (
-              <div key={r.title} className="card text-left">
-                <h3 className="font-bold text-lg mb-2">{r.title}</h3>
-                <p className="text-slate-500 text-sm">{r.desc}</p>
+              <div key={r.title} className="card text-left flex flex-col justify-between">
+                <div>
+                  <h3 className="font-bold text-lg mb-2">{r.title}</h3>
+                  <p className="text-slate-500 text-sm mb-4">{r.desc}</p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button className="btn-primary text-xs flex-1" onClick={() => navigate(`/${r.role}/register`)}>Register</button>
+                  <button className="btn-secondary text-xs flex-1" onClick={() => navigate(`/${r.role}/login`)}>Login</button>
+                </div>
               </div>
             ))}
+            {/* Admin Card */}
+            <div className="card text-left flex flex-col justify-between md:col-span-3 lg:col-span-1 max-w-sm mx-auto w-full border-dashed border-2 border-slate-300 dark:border-slate-700 bg-transparent shadow-none mt-4 md:mt-0">
+              <div>
+                <h3 className="font-bold text-lg mb-2">System Admin</h3>
+                <p className="text-slate-500 text-sm mb-4">Manage users, oversee hospital networks, and monitor system analytics.</p>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button className="btn-primary text-xs flex-1 bg-slate-800 hover:bg-slate-900" onClick={() => navigate(`/admin/register`)}>Register</button>
+                <button className="btn-secondary text-xs flex-1" onClick={() => navigate(`/admin/login`)}>Login</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>

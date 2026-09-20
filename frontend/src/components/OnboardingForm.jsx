@@ -15,6 +15,8 @@ import { PatientAPI, DoctorAPI, CaregiverAPI } from "../api/endpoints";
 
 const fieldsByRole = {
   patient: [
+    { key: "diagnosis", label: "Diagnosis / Medical Condition (Post-Discharge)", type: "text", required: true, placeholder: "e.g. Post-cardiac bypass, Type 2 Diabetes" },
+    { key: "discharge_date", label: "Hospital Discharge Date", type: "date", required: true },
     { key: "date_of_birth", label: "Date of Birth", type: "date", required: false },
     {
       key: "gender",
@@ -23,23 +25,21 @@ const fieldsByRole = {
       options: ["male", "female", "other", "prefer_not_to_say"],
       required: false,
     },
-    { key: "diagnosis", label: "Diagnosis / Condition", type: "text", required: false, placeholder: "e.g. Diabetes Type 2" },
-    { key: "discharge_date", label: "Hospital Discharge Date", type: "date", required: false },
-    { key: "emergency_contact_name", label: "Emergency Contact Name", type: "text", required: false },
-    { key: "emergency_contact_phone", label: "Emergency Contact Phone", type: "tel", required: false },
+    { key: "emergency_contact_name", label: "Emergency Contact Name", type: "text", required: false, placeholder: "e.g. Sarah Connor" },
+    { key: "emergency_contact_phone", label: "Emergency Contact Phone", type: "tel", required: false, placeholder: "e.g. +1 555-0199" },
     { key: "device_id", label: "Smart Dispenser Device ID (optional)", type: "text", required: false, placeholder: "e.g. ESP32-001" },
   ],
   doctor: [
-    { key: "specialization", label: "Specialization", type: "text", required: false, placeholder: "e.g. Cardiology" },
-    { key: "license_number", label: "Medical License Number", type: "text", required: false },
+    { key: "specialization", label: "Medical Specialization", type: "text", required: true, placeholder: "e.g. Cardiology, Internal Medicine" },
+    { key: "license_number", label: "Medical License Number", type: "text", required: true, placeholder: "e.g. MD-982341" },
   ],
   caregiver: [
     {
       key: "relationship_to_patient",
       label: "Relationship to Patient",
       type: "text",
-      required: false,
-      placeholder: "e.g. Family, Nurse, Friend",
+      required: true,
+      placeholder: "e.g. Family Member, Home Nurse, Spouse",
     },
   ],
 };
@@ -58,7 +58,7 @@ const subtitleByRole = {
 
 const emojiByRole = { patient: "🏥", doctor: "👨‍⚕️", caregiver: "🤝" };
 
-export default function OnboardingForm({ onSkip }) {
+export default function OnboardingForm() {
   const { user, refreshUser } = useAuth();
   const { toggle, isDark } = useTheme();
   const [form, setForm] = useState({});
@@ -168,15 +168,6 @@ export default function OnboardingForm({ onSkip }) {
             >
               {loading ? "Saving…" : "Complete Profile →"}
             </button>
-            {onSkip && (
-              <button
-                type="button"
-                onClick={onSkip}
-                className="py-2.5 rounded-xl text-slate-500 dark:text-slate-400 font-medium text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                Skip for now
-              </button>
-            )}
           </div>
         </form>
       </div>

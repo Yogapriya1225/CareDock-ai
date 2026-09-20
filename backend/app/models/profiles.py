@@ -18,6 +18,7 @@ class Hospital(Base):
     contact_number = Column(String(20), nullable=True)
 
     doctors = relationship("Doctor", back_populates="hospital")
+    patients = relationship("Patient", back_populates="hospital")
 
 
 class Doctor(Base):
@@ -60,10 +61,12 @@ class Patient(Base):
 
     assigned_doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=True)
     assigned_caregiver_id = Column(Integer, ForeignKey("caregivers.id"), nullable=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=True)
 
     user = relationship("User", back_populates="patient_profile")
     assigned_doctor = relationship("Doctor", back_populates="patients")
     assigned_caregiver = relationship("Caregiver", back_populates="patients")
+    hospital = relationship("Hospital", back_populates="patients")
 
     medicine_schedules = relationship("MedicineSchedule", back_populates="patient")
     medicine_history = relationship("MedicineHistory", back_populates="patient")

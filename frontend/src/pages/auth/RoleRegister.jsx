@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
-export default function RegisterPage() {
+const roleTitles = {
+  patient: "Patient Portal",
+  doctor: "Doctor Portal",
+  caregiver: "Caregiver Portal",
+  admin: "Admin Console",
+};
+
+export default function RoleRegister({ targetRole }) {
   const { register, handleSubmit, formState: { errors } } = useForm();
   const { register: doRegister } = useAuth();
   const { isDark, toggle } = useTheme();
@@ -16,7 +23,9 @@ export default function RegisterPage() {
     setServerError("");
     setLoading(true);
     try {
-      const user = await doRegister(data);
+      // Force the role to be the targetRole of this page
+      const payload = { ...data, role: targetRole };
+      const user = await doRegister(payload);
       navigate(`/${user.role}/dashboard`);
     } catch (err) {
       setServerError(err.response?.data?.detail || "Registration failed. Please try again.");
@@ -27,7 +36,6 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-6 py-12 relative transition-colors duration-200">
-      {/* Theme Toggle Button */}
       <button
         type="button"
         onClick={toggle}
@@ -47,16 +55,16 @@ export default function RegisterPage() {
               CareDock AI
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Post-Discharge Care Network
+              {roleTitles[targetRole]}
             </p>
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100">
-          Create an Account
+        <h1 className="text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100 capitalize">
+          Create {targetRole} Account
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-          Register as a patient, doctor, caregiver, or administrator
+          Register for the CareDock {targetRole} network
         </p>
 
         {serverError && (
@@ -110,22 +118,6 @@ export default function RegisterPage() {
 
           <div>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Account Role
-            </label>
-            <select
-              className="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2.5 mt-1 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-              style={{ colorScheme: isDark ? "dark" : "light" }}
-              {...register("role", { required: true })}
-            >
-              <option value="patient">🏥 Patient (Monitored post-discharge)</option>
-              <option value="doctor">👨‍⚕️ Doctor (Clinical care & monitoring)</option>
-              <option value="caregiver">🤝 Caregiver (Family or nurse support)</option>
-              <option value="admin">⚙️ Administrator</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Contact Phone (optional)
             </label>
             <input
@@ -148,9 +140,12 @@ export default function RegisterPage() {
 
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-6 text-center">
           Already have an account?{" "}
-          <Link to="/login" className="text-primary-600 dark:text-primary-400 font-semibold hover:underline">
+          <Link to={`/${targetRole}/login`} className="text-primary-600 dark:text-primary-400 font-semibold hover:underline">
             Log in
           </Link>
+        </p>
+        <p className="text-xs text-slate-400 mt-4 text-center">
+          <Link to="/" className="hover:underline">← Back to Home</Link>
         </p>
       </div>
     </div>
