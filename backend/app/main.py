@@ -2,13 +2,14 @@
 CareDock AI - FastAPI application entrypoint.
 Run with: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import Base, engine
 import app.models  # noqa: F401  (ensures all models register with Base.metadata)
 
-from app.routers import auth, patient, doctor, caregiver, admin, esp32, ml, chatbot
+from app.routers import auth, patient, doctor, caregiver, admin, esp32, ml, chatbot, device_box
 
 app = FastAPI(
     title="CareDock AI",
@@ -32,7 +33,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup():
-    # For a hackathon demo, auto-create tables. In production, use Alembic migrations instead.
+    # Auto-create missing database tables at startup without affecting existing data
     Base.metadata.create_all(bind=engine)
 
 
@@ -46,6 +47,7 @@ def health_check():
     return {"status": "healthy"}
 
 
+# Register all original routers
 app.include_router(auth.router)
 app.include_router(patient.router)
 app.include_router(doctor.router)
@@ -54,3 +56,6 @@ app.include_router(admin.router)
 app.include_router(esp32.router)
 app.include_router(ml.router)
 app.include_router(chatbot.router)
+
+# Register the new device router
+app.include_router(device_box.router)
